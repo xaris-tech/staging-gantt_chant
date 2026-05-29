@@ -112,6 +112,20 @@
     position: relative;
   }
   .gantt-table th { background: #d8d8d8; font-weight: bold; }
+  .gantt-table th.seg-header {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.15;
+    padding: 4px 6px;
+  }
+  .seg-name-editable {
+    display: block;
+    width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
   .gantt-table td.task-cell { cursor: pointer; font-size: 10px; min-width: 36px; }
   .gantt-table td.task-cell:hover { filter: brightness(0.92); }
   .task-input {
@@ -470,7 +484,7 @@ function renderHeader() {
     const seg = segments[s];
     if (!seg) return;
     const color = seg.color || getSegColor(si);
-    html += `<th colspan="${seg.cols}" data-seg="${s.replace(/"/g,'&quot;')}" style="background:${color};color:#fff;">
+    html += `<th colspan="${seg.cols}" data-seg="${s.replace(/"/g,'&quot;')}" class="seg-header" style="background:${color};color:#fff;">
       <span class="seg-name-editable" onclick="editSegmentLabel('${s.replace(/'/g,"\\'")}')" title="Click to rename">${esc(seg.label || s)}</span>
     </th>`;
   });
