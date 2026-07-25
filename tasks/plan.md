@@ -1,4 +1,6 @@
-# Plan: Stage Manager Gantt Chart
+# Legacy Plan: Stage Manager Gantt Chart
+
+> **Archived:** This describes the original painted-cell application and is not the active delivery plan. The current MVP scope and verification gate are defined in [`../VERTICAL-SLICE-PLAN.md`](../VERTICAL-SLICE-PLAN.md). Do not treat the tasks below as current commitments.
 
 ## Overview
 

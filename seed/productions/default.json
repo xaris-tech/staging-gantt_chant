@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "default",
+  "title": "Sunday Revival",
+  "productionDate": "2026-07-26",
+  "venue": "New Life Center",
+  "floorDirectors": [],
+  "timezone": "Asia/Manila",
+  "plannedStart": "2026-07-26T08:00:00+08:00",
+  "plannedEnd": "2026-07-26T12:00:00+08:00",
+  "revision": 0,
+  "createdAt": "2026-07-24T00:00:00.000Z",
+  "updatedAt": "2026-07-24T00:00:00.000Z",
+  "segments": [],
+  "lanes": [],
+  "activities": []
+}
