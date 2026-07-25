@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { toBlob } from 'html-to-image';
 import { ZodError } from 'zod';
 import {
   activityStatuses,
@@ -221,6 +222,7 @@ function ProductionEditor({ productionId }: { productionId: string }) {
   const [collapsedSegments, setCollapsedSegments] = useState<Set<string>>(new Set());
   const [saveState, setSaveState] = useState(() => new URLSearchParams(window.location.search).get('created') === '1' ? 'Saved' : 'Production loaded');
   const [operationError, setOperationError] = useState('');
+  const [exporting, setExporting] = useState(false);
   const controller = useRef<AbortController | null>(null);
 
   const load = () => {
@@ -294,6 +296,34 @@ function ProductionEditor({ productionId }: { productionId: string }) {
     }
   };
 
+  const exportBoard = async () => {
+    setOperationError(''); setExporting(true);
+    const restoreMode = mode;
+    let scroller: HTMLElement | null = null;
+    let previousOverflow = '';
+    try {
+      if (mode !== 'timeline') { setMode('timeline'); await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
+      const board = document.getElementById('stage-sequence-board');
+      if (!board) throw new Error('The Stage Sequence Board is unavailable.');
+      await document.fonts.ready;
+      scroller = board.querySelector<HTMLElement>('[data-board-scroll]');
+      if (scroller) { previousOverflow = scroller.style.overflow; scroller.style.overflow = 'visible'; }
+      const width = Math.max(board.scrollWidth, scroller?.scrollWidth || 0); const height = board.scrollHeight;
+      const basePixels = width * height;
+      const maximumOutputPixels = 16_000_000;
+      if (width > 8_192 || height > 8_192 || basePixels > maximumOutputPixels) throw new Error('This board is too large for one safe image. Reduce its rows or columns and try again.');
+      const pixelRatio = basePixels * 4 <= maximumOutputPixels ? 2 : 1;
+      const blob = await toBlob(board, { backgroundColor: '#f0f0f0', cacheBust: true, height, pixelRatio, width, style: { overflow: 'visible' }, filter: (node) => !(node instanceof HTMLElement && (node.dataset.exportExclude === 'true' || (node instanceof HTMLButtonElement && !node.draggable && node.dataset.segmentName === undefined))) });
+      if (!blob) throw new Error('The browser could not create the PNG.');
+      const image = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `${production.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'production'}-stage-sequence.png`;
+      link.href = image; link.click();
+      setTimeout(() => URL.revokeObjectURL(image), 1_000);
+    } catch (caught) { setOperationError(`Image export failed. ${errorMessage(caught)}`); }
+    finally { if (scroller) scroller.style.overflow = previousOverflow; if (restoreMode !== 'timeline') setMode(restoreMode); setExporting(false); }
+  };
+
   return (
     <>
       <section className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
@@ -303,7 +333,7 @@ function ProductionEditor({ productionId }: { productionId: string }) {
           <p className="mt-3 text-slate-600">{production.venue} / {formatDate(production.productionDate)}</p>
           <p className="mt-2 text-sm text-slate-600"><strong>Floor Directors:</strong> {production.floorDirectors.length ? production.floorDirectors.join(', ') : 'Not assigned'}</p>
         </div>
-        <div className="flex items-center gap-2"><div aria-label="Save status" className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm text-emerald-200">{saveState}</div><button className={buttonPrimary} disabled={saveState === 'Saving...'} onClick={async () => { setOperationError(''); try { await persist(production); } catch (caught) { setOperationError(errorMessage(caught)); } }} type="button">Save now</button></div>
+        <div className="flex items-center gap-2"><div aria-label="Save status" className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm text-emerald-200">{saveState}</div><button className={buttonPrimary} disabled={exporting} onClick={exportBoard} type="button">{exporting ? 'Exporting...' : 'Export image'}</button></div>
       </section>
 
       <dl aria-label="Production details" className="mt-7 grid gap-px overflow-hidden rounded-2xl border border-slate-300 bg-slate-300 sm:grid-cols-3">
@@ -436,19 +466,22 @@ function Timeline({ production, collapsed, editSegment, moveSegment, toggleSegme
   const segments = [...production.segments].sort((a, b) => a.position - b.position);
 
   return (
-    <section aria-labelledby="timeline-title" className="mt-6 overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
-      <div className="group/boardtools flex items-center justify-between gap-4 border-b border-slate-300 bg-slate-100 p-4" data-testid="board-add-controls"><div><h2 id="timeline-title" className="text-lg font-bold">Stage Sequence Board</h2><p className="text-sm text-slate-600">Drag colored Segments to reorder the show. Drag Activities into any Lane and Segment cell.</p></div><div className="flex shrink-0 gap-2 opacity-0 transition group-hover/boardtools:opacity-100 group-focus-within/boardtools:opacity-100" data-testid="board-add-buttons"><button aria-label="Create board lane" className="rounded-full border border-emerald-700 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50" onClick={addLane} type="button">+ Lane</button><button aria-label="Create board column" className="rounded-full border border-emerald-700 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50" onClick={addSegment} type="button">+ Segment</button></div></div>
+    <section aria-labelledby="timeline-title" className="mt-6 overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm" id="stage-sequence-board">
+      <div className="group/boardtools flex items-center justify-between gap-4 border-b border-slate-300 bg-slate-100 p-4" data-testid="board-add-controls">
+        <div><h2 id="timeline-title" className="text-lg font-bold">Stage Sequence Board</h2><p className="text-sm text-slate-600" data-export-exclude="true">Drag colored Segments to reorder the show. Drag Activities into any Lane and Segment cell.</p></div>
+        <div className="flex shrink-0 gap-2 opacity-0 transition group-hover/boardtools:opacity-100 group-focus-within/boardtools:opacity-100" data-export-exclude="true" data-testid="board-add-buttons"><button aria-label="Create board lane" className="rounded-full border border-emerald-700 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50" onClick={addLane} type="button">+ Lane</button><button aria-label="Create board column" className="rounded-full border border-emerald-700 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50" onClick={addSegment} type="button">+ Segment</button></div>
+      </div>
       {!segments.length && <div className="border-b border-slate-300 p-5 text-center"><h3 className="font-semibold">Build the run of show</h3><p className="mt-1 text-sm text-slate-600">Add the first Segment. Existing Lanes remain available below.</p></div>}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" data-board-scroll>
         <div className="min-w-[900px] pb-5 pr-8" style={{ minWidth: `${Math.max(900, 220 + segments.length * 190)}px` }}>
           <div className="grid border-b border-slate-400 bg-slate-200" style={{ gridTemplateColumns: `220px repeat(${Math.max(segments.length, 1)}, minmax(180px, 1fr))` }} data-testid="segment-header">
             <div className="sticky left-0 z-10 border-r border-slate-400 bg-slate-200 p-4 text-xs font-bold uppercase tracking-wider text-slate-700">Lane / Team</div>
             {segments.length ? (
               segments.map((segment, index) => (
                 <div draggable key={segment.id} className="group/segment relative min-h-24 cursor-grab border-r border-black/30 p-3 text-slate-950 last:border-0" data-testid={`segment-column-header-${segment.id}`} onDragStart={(event) => event.dataTransfer.setData('application/x-stageflow-segment', segment.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const sourceId = event.dataTransfer.getData('application/x-stageflow-segment'); if (sourceId) reorderSegments(sourceId, segment.id); }} style={{ backgroundColor: segment.color }}>
-                  <button className="w-full text-left font-bold" data-segment-name onClick={() => editSegment(segment)} type="button">{segment.label}</button>
-                  <p className="mt-1 text-xs font-medium opacity-75">Drag to reorder</p>
-                  <div className="mt-2 flex gap-1">
+                  <button className="w-full text-left font-bold" data-export-content="true" data-segment-name onClick={() => editSegment(segment)} type="button">{segment.label}</button>
+                  <p className="mt-1 text-xs font-medium opacity-75" data-export-exclude="true">Drag to reorder</p>
+                  <div className="mt-2 flex gap-1" data-export-exclude="true">
                     <button aria-label={`Move ${segment.label} earlier`} disabled={index === 0} onClick={() => moveSegment(segment.id, -1)} type="button">&#8592;</button>
                     <button aria-label={`Move ${segment.label} later`} disabled={index === segments.length - 1} onClick={() => moveSegment(segment.id, 1)} type="button">&#8594;</button>
                     <button aria-label={`${collapsed.has(segment.id) ? 'Expand' : 'Collapse'} ${segment.label}`} onClick={() => toggleSegment(segment.id)} type="button">{collapsed.has(segment.id) ? '+' : '-'}</button>

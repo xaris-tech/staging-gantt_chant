@@ -73,16 +73,28 @@ test('rejects a stale Production revision instead of overwriting newer data', as
   expect(staleSave.status()).toBe(409);
 });
 
-test('offers an explicit Save now action in addition to autosave', async ({ page, request }) => {
+test('exports the complete Stage Sequence Board as a shareable PNG image', async ({ page, request }) => {
   const created = await (await request.post('/api/productions', { data: {
     title: `Manual Save ${crypto.randomUUID()}`, productionDate: '2026-08-22', venue: 'Stage', timezone: 'Asia/Manila',
     plannedStart: '2026-08-22T08:00:00+08:00', plannedEnd: '2026-08-22T12:00:00+08:00',
   } })).json();
+  const segments = Array.from({ length: 7 }, (_, position) => ({ id: `segment-${position}`, label: `Segment ${position + 1}`, color: '#6cb87a', start: `2026-08-22T${String(8 + Math.floor(position / 2)).padStart(2, '0')}:${position % 2 ? '30' : '00'}:00+08:00`, durationMinutes: 30, position, notes: '' }));
+  const seeded = await request.put(`/api/productions/${created.id}`, { data: { ...created, segments, lanes: [{ id: 'stage', label: 'Stage', group: 'Program', color: '#6a9fd8', position: 0 }] } });
+  expect(seeded.ok()).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/app/?production=${created.id}`);
-  await page.getByRole('button', { name: 'Save now' }).click();
-  await expect(page.getByLabel('Save status')).toHaveText('Saved');
-  const stored = await (await request.get(`/api/productions/${created.id}`)).json();
-  expect(stored.revision).toBe(created.revision + 1);
+  await expect(page.getByRole('button', { name: 'Run of Show' })).toHaveAttribute('aria-pressed', 'true');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export image' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^manual-save-.*\.png$/);
+  const chunks = []; const stream = await download.createReadStream();
+  for await (const chunk of stream) chunks.push(chunk);
+  const png = Buffer.concat(chunks);
+  expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  expect(png.readUInt32BE(16)).toBeGreaterThan(2_000);
+  expect(png.readUInt32BE(20)).toBeGreaterThan(100);
+  await expect(page.getByRole('button', { name: 'Run of Show' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Express creation identity includes Floor Directors and timezone', async ({ request }) => {
