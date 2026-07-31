@@ -1,6 +1,7 @@
-const { kv } = require('@vercel/kv');
-const fs = require('fs');
-const path = require('path');
+const { client: kvClient } = require('./_kv');
+
+const memoryData = globalThis.__STAGEFLOW_CHART_DATA__ || new Map();
+globalThis.__STAGEFLOW_CHART_DATA__ = memoryData;
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,10 +15,12 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      let data;
-      if (process.env.KV_URL) {
-        data = await kv.get(storeKey);
+      let data = null;
+      const client = kvClient();
+      if (client) {
+        data = await client.get(storeKey);
       }
+      if (!data) data = memoryData.get(storeKey);
       return res.status(200).json(data || { rows: [], segments: {}, chartTitle: 'DAY-0 GANTT CHART' });
     } catch (err) {
       return res.status(500).json({ error: 'Failed to read data', detail: err.message });
@@ -28,9 +31,11 @@ module.exports = async function handler(req, res) {
     try {
       const body = typeof req.body === 'object' ? req.body : JSON.parse(req.body);
       body.updatedAt = Date.now();
-      if (process.env.KV_URL) {
-        await kv.set(storeKey, body);
+      const client = kvClient();
+      if (client) {
+        await client.set(storeKey, body);
       }
+      memoryData.set(storeKey, body);
       return res.status(200).json({ ok: true, updatedAt: body.updatedAt });
     } catch (err) {
       return res.status(500).json({ error: 'Failed to save data', detail: err.message });

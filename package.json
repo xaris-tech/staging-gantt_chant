@@ -9,7 +9,7 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
-    "@vercel/kv": "^2.0.0",
+    "@upstash/redis": "^1.38.1",
     "express": "^4.22.2",
     "html-to-image": "^1.11.13",
     "react": "^19.1.1",

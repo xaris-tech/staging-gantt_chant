@@ -1,28 +1,14 @@
 const crypto = require('crypto');
-const { kv } = require('@vercel/kv');
 const defaultProduction = require('../seed/productions/default.json');
 const { createProductionSchema, productionSchema } = require('../production-repository');
+const { client: kvClient } = require('./_kv');
 
 const KEY_PREFIX = 'stageflow:production:v1:';
 const memoryStore = globalThis.__STAGEFLOW_PRODUCTIONS__ || new Map();
 globalThis.__STAGEFLOW_PRODUCTIONS__ = memoryStore;
 
-function hasKvConfiguration() {
-  return Boolean(globalThis.__STAGEFLOW_KV_CLIENT__ || (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN));
-}
-
-function kvClient() { return globalThis.__STAGEFLOW_KV_CLIENT__ || kv; }
-
-function persistenceUnavailable() {
-  const error = new Error('Production storage is not configured. Connect a Vercel KV store and redeploy.');
-  error.code = 'PERSISTENCE_UNAVAILABLE';
-  return error;
-}
-
 function useMemory() {
-  if (hasKvConfiguration()) return false;
-  if (process.env.VERCEL) throw persistenceUnavailable();
-  return true;
+  return !kvClient();
 }
 
 function keyOf(id) {
@@ -41,11 +27,16 @@ async function storedRecords() {
 
 async function get(id) {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  if (useMemory()) {
+    if (id === 'default') return productionSchema.parse(memoryStore.get(keyOf(id)) || defaultProduction);
+    const value = memoryStore.get(keyOf(id));
+    return value ? productionSchema.parse(value) : null;
+  }
   if (id === 'default') {
-    const persisted = useMemory() ? memoryStore.get(keyOf(id)) : await kvClient().get(keyOf(id));
+    const persisted = await kvClient().get(keyOf(id));
     return productionSchema.parse(persisted || defaultProduction);
   }
-  const value = useMemory() ? memoryStore.get(keyOf(id)) : await kvClient().get(keyOf(id));
+  const value = await kvClient().get(keyOf(id));
   return value ? productionSchema.parse(value) : null;
 }
 
