@@ -175,3 +175,48 @@ test('rejects nonexistent DST times and chooses the earlier instant for ambiguou
   const stored = JSON.parse(storedText);
   expect(stored.plannedStart).toBe('2026-11-01T05:30:00.000Z');
 });
+
+test('seeds a new Production from the legacy Gantt chart template', async ({ page, request }) => {
+  await page.goto('/app/');
+  await page.getByRole('button', { name: 'New production' }).click();
+  await page.getByLabel('Production title').fill('Template Show');
+  await page.getByLabel('Production date').fill('2026-08-09');
+  await page.getByLabel('Venue').fill('Main Stage');
+  await page.getByRole('checkbox', { name: /Start from the legacy Gantt chart template/ }).check();
+  await page.getByRole('button', { name: 'Create production' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Template Show' })).toBeVisible();
+  const id = new URL(page.url()).searchParams.get('production');
+  expect(id).toBeTruthy();
+
+  const storedResponse = await request.get(`/api/productions/${id}`);
+  const stored = await storedResponse.json();
+  expect(stored.segments.map((segment) => segment.label)).toEqual(['PRAISE & WORSHIP', 'CHOIR PRODUCTION', 'DANCE PRODUCTION', 'AWARDING', 'PREACHING PROPER', 'END PROD']);
+  expect(stored.lanes.map((lane) => lane.label)).toEqual(['BAND / MUSICIANS', 'CHOIR', 'DANCERS', 'LIGHTS', 'SOUND', 'SCREEN / LED', 'STAGE / SET', 'PRODUCTION']);
+  expect(stored.activities.length).toBeGreaterThan(10);
+  for (const activity of stored.activities) {
+    const segment = stored.segments.find((item) => item.id === activity.segmentId);
+    const lane = stored.lanes.find((item) => item.id === activity.laneId);
+    expect(segment).toBeTruthy();
+    expect(lane).toBeTruthy();
+    expect(Date.parse(activity.start) + activity.durationMinutes * 60_000).toBeLessThanOrEqual(Date.parse(stored.plannedEnd));
+    expect(Date.parse(activity.start)).toBeGreaterThanOrEqual(Date.parse(stored.plannedStart));
+  }
+  await expect(page.getByRole('button', { name: 'PRAISE & WORSHIP', exact: true })).toBeVisible();
+});
+
+test('rejects a template Production whose planned run is shorter than the template', async ({ page }) => {
+  await page.goto('/app/');
+  await page.getByRole('button', { name: 'New production' }).click();
+  await page.getByLabel('Production title').fill('Too Short');
+  await page.getByLabel('Production date').fill('2026-08-09');
+  await page.getByLabel('Venue').fill('Main Stage');
+  await page.getByText('Optional timing').click();
+  await page.getByLabel('Planned start').fill('08:00');
+  await page.getByLabel('Planned end').fill('12:00');
+  await page.getByRole('checkbox', { name: /Start from the legacy Gantt chart template/ }).check();
+  await page.getByRole('button', { name: 'Create production' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('at least 7 hours');
+  await expect(page).toHaveURL(/\/app\/$/);
+});

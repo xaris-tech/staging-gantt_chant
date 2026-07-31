@@ -107,7 +107,9 @@ test('deployed Production API treats Floor Directors and timezone as creation id
 test('configured KV branch uses atomic allocation and compare-and-save contracts', async () => {
   const records = new Map();
   const calls = { nx: 0, eval: 0, scan: 0 };
-  globalThis.__STAGEFLOW_KV_CLIENT__ = {
+  process.env.KV_REST_API_URL = 'https://mock.upstash.io';
+  process.env.KV_REST_API_TOKEN = 'mock-token';
+  globalThis.__STAGEFLOW_REDIS_CLIENT__ = {
     async *scanIterator({ match }) {
       calls.scan += 1;
       const prefix = match.replace('*', '');
@@ -156,7 +158,9 @@ test('configured KV branch uses atomic allocation and compare-and-save contracts
     expect(calls).toMatchObject({ nx: 1, eval: 2 });
     expect(calls.scan).toBeGreaterThan(0);
   } finally {
-    delete globalThis.__STAGEFLOW_KV_CLIENT__;
+    delete globalThis.__STAGEFLOW_REDIS_CLIENT__;
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
     delete require.cache[storePath]; delete require.cache[collectionPath]; delete require.cache[detailPath];
   }
 });

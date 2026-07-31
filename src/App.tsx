@@ -18,6 +18,7 @@ import {
   type ProductionSummary,
   type Segment,
 } from './production';
+import { seedFromTemplate, TEMPLATE_SPAN_MINUTES } from './template';
 
 type LoadState<T> =
   | { status: 'loading' }
@@ -168,6 +169,7 @@ function CreateProductionPanel({ close }: { close: () => void }) {
       return;
     }
     const timezone = String(form.get('timezone'));
+    const fromTemplate = form.get('fromTemplate') === 'on';
     let metadata: ProductionMetadata;
     try {
       metadata = {
@@ -183,10 +185,15 @@ function CreateProductionPanel({ close }: { close: () => void }) {
       setError(errorMessage(caught));
       return;
     }
+    if (fromTemplate && Date.parse(metadata.plannedEnd) - Date.parse(metadata.plannedStart) < TEMPLATE_SPAN_MINUTES * 60_000) {
+      setError(`The legacy template needs a planned run of at least ${TEMPLATE_SPAN_MINUTES / 60} hours (8 AM to 3 PM).`);
+      return;
+    }
     setSaving(true);
     setError('');
     try {
       const production = await productionRepository.create(metadata);
+      if (fromTemplate) await productionRepository.save(seedFromTemplate(production));
       navigate(production.id, true);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -202,6 +209,7 @@ function CreateProductionPanel({ close }: { close: () => void }) {
         <Field label="Venue"><input className={fieldClass} name="venue" required /></Field>
         <Field label="Floor Directors"><textarea className={fieldClass} name="floorDirectors" placeholder="Add names separated by commas" rows={2} /></Field>
         <details className="rounded-lg border border-slate-300 p-3"><summary className="cursor-pointer font-semibold">Optional timing</summary><div className="mt-3 space-y-3"><Field label="Timezone"><select className={fieldClass} name="timezone" defaultValue="Asia/Manila"><option>Asia/Manila</option><option>UTC</option><option>America/New_York</option><option>Europe/London</option></select></Field><div className="grid grid-cols-2 gap-3"><Field label="Planned start"><input className={fieldClass} defaultValue="08:00" name="start" type="time" required /></Field><Field label="Planned end"><input className={fieldClass} defaultValue="20:00" name="end" type="time" required /></Field></div></div></details>
+        <label className="flex items-start gap-3 rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-slate-200"><input className="mt-0.5 h-4 w-4 accent-emerald-300" name="fromTemplate" type="checkbox" />Start from the legacy Gantt chart template (teams, segments, and colors)</label>
         {error && <p role="alert" className="rounded-lg border border-red-400/30 bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
         <button className={`${buttonPrimary} w-full`} disabled={saving} type="submit">{saving ? 'Creating...' : 'Create production'}</button>
       </form>
