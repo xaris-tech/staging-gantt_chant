@@ -138,6 +138,7 @@ app.get('/app/*path', (_req, res) => {
   res.sendFile(path.join(appDist, 'index.html'));
 });
 
+const publicDir = path.join(__dirname, 'public');
 const publicFiles = new Map([
   ['/staging_gantt-chart.html', 'staging_gantt-chart.html'],
   ['/manifest.json', 'manifest.json'],
@@ -146,7 +147,7 @@ const publicFiles = new Map([
 ]);
 
 app.get([...publicFiles.keys()], (req, res) => {
-  res.sendFile(path.join(__dirname, publicFiles.get(req.path)));
+  res.sendFile(path.join(publicDir, publicFiles.get(req.path)));
 });
 
 app.get('/', (_req, res) => {
