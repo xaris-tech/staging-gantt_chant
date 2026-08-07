@@ -198,6 +198,13 @@ function createProductionRepository({ dataDir, seedDir }) {
       }
       return write({ ...input, createdAt: current.createdAt, updatedAt: new Date().toISOString(), revision: current.revision + 1 });
     },
+    remove(id) {
+      if (!/^[A-Za-z0-9_-]+$/.test(id) || id === 'default') return false;
+      const filePath = productionPath(id);
+      if (!fs.existsSync(filePath)) return false;
+      fs.unlinkSync(filePath);
+      return true;
+    },
   };
 }
 

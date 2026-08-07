@@ -16,7 +16,7 @@ app.use((req, res, next) => {
   } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
   }
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
@@ -106,6 +106,16 @@ app.put('/api/productions/:productionId', (req, res) => {
   } catch (error) {
     if (error.code === 'REVISION_CONFLICT') return res.status(409).json({ error: error.message });
     res.status(400).json({ error: error.issues?.[0]?.message || 'Invalid Production document.' });
+  }
+});
+
+app.delete('/api/productions/:productionId', (req, res) => {
+  try {
+    const deleted = productionRepository.remove(req.params.productionId);
+    if (!deleted) return res.status(404).json({ error: 'Production not found.' });
+    res.json({ deleted: true });
+  } catch {
+    res.status(500).json({ error: 'Production could not be deleted.' });
   }
 });
 

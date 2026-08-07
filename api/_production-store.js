@@ -1,43 +1,60 @@
 const crypto = require('crypto');
 const defaultProduction = require('../seed/productions/default.json');
 const { createProductionSchema, productionSchema } = require('../production-repository');
-const { client: kvClient } = require('./_kv');
+const { client: supabaseClient } = require('./_supabase');
 
-const KEY_PREFIX = 'stageflow:production:v1:';
 const memoryStore = globalThis.__STAGEFLOW_PRODUCTIONS__ || new Map();
 globalThis.__STAGEFLOW_PRODUCTIONS__ = memoryStore;
 
 function useMemory() {
-  return !kvClient();
+  return process.env.NODE_ENV === 'test' || process.env.STAGEFLOW_USE_MEMORY_STORE === '1';
 }
 
-function keyOf(id) {
-  return `${KEY_PREFIX}${id}`;
+function database() {
+  const configured = supabaseClient();
+  if (configured) return configured;
+  if (useMemory()) return null;
+  throw new Error('Supabase storage is not configured.');
+}
+
+function rowOf(production) {
+  return {
+    id: production.id,
+    title: production.title,
+    production_date: production.productionDate,
+    revision: production.revision,
+    document: production,
+    created_at: production.createdAt,
+    updated_at: production.updatedAt,
+  };
+}
+
+function storageError(error) {
+  const wrapped = new Error('Supabase storage request failed.');
+  wrapped.cause = error;
+  return wrapped;
 }
 
 async function storedRecords() {
-  if (useMemory()) return [...memoryStore.values()].map((value) => productionSchema.parse(value));
-  const records = [];
-  for await (const key of kvClient().scanIterator({ match: `${KEY_PREFIX}*`, count: 100 })) {
-    const value = await kvClient().get(key);
-    if (value) records.push(productionSchema.parse(value));
-  }
-  return records;
+  const db = database();
+  if (!db) return [...memoryStore.values()].map((value) => productionSchema.parse(value));
+  const { data, error } = await db.from('productions').select('document').order('production_date').order('title');
+  if (error) throw storageError(error);
+  return data.map(({ document }) => productionSchema.parse(document));
 }
 
 async function get(id) {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
-  if (useMemory()) {
-    if (id === 'default') return productionSchema.parse(memoryStore.get(keyOf(id)) || defaultProduction);
-    const value = memoryStore.get(keyOf(id));
+  const db = database();
+  if (!db) {
+    if (id === 'default') return productionSchema.parse(memoryStore.get(id) || defaultProduction);
+    const value = memoryStore.get(id);
     return value ? productionSchema.parse(value) : null;
   }
-  if (id === 'default') {
-    const persisted = await kvClient().get(keyOf(id));
-    return productionSchema.parse(persisted || defaultProduction);
-  }
-  const value = await kvClient().get(keyOf(id));
-  return value ? productionSchema.parse(value) : null;
+  const { data, error } = await db.from('productions').select('document').eq('id', id).maybeSingle();
+  if (error) throw storageError(error);
+  if (!data && id === 'default') return productionSchema.parse(defaultProduction);
+  return data ? productionSchema.parse(data.document) : null;
 }
 
 function slugify(value) {
@@ -72,15 +89,17 @@ async function create(input) {
   for (const id of candidates) {
     const now = new Date().toISOString();
     const production = productionSchema.parse({ schemaVersion: 1, id, ...metadata, revision: 0, createdAt: now, updatedAt: now, segments: [], lanes: [], activities: [] });
-    if (useMemory()) {
-      const existing = memoryStore.get(keyOf(id));
-      if (!existing) { memoryStore.set(keyOf(id), production); return production; }
+    const db = database();
+    if (!db) {
+      const existing = memoryStore.get(id);
+      if (!existing) { memoryStore.set(id, production); return production; }
       if (metadataMatches(existing, metadata)) return productionSchema.parse(existing);
     } else {
-      const created = await kvClient().set(keyOf(id), production, { nx: true });
-      if (created) return production;
-      const existing = await kvClient().get(keyOf(id));
-      if (existing && metadataMatches(existing, metadata)) return productionSchema.parse(existing);
+      const { data, error } = await db.from('productions').insert(rowOf(production)).select('document').maybeSingle();
+      if (!error && data) return productionSchema.parse(data.document);
+      if (error && error.code !== '23505') throw storageError(error);
+      const existing = await get(id);
+      if (existing && metadataMatches(existing, metadata)) return existing;
     }
   }
   throw new Error('A unique Production identifier could not be allocated.');
@@ -89,27 +108,38 @@ async function create(input) {
 async function save(id, input) {
   if (!/^[A-Za-z0-9_-]+$/.test(id) || input.id !== id) return null;
   const parsedInput = productionSchema.parse(input);
-  if (useMemory()) {
-    const current = memoryStore.get(keyOf(id)) || (id === 'default' ? productionSchema.parse(defaultProduction) : null);
+  const db = database();
+  if (!db) {
+    const current = memoryStore.get(id) || (id === 'default' ? productionSchema.parse(defaultProduction) : null);
     if (!current) return null;
     if (parsedInput.revision !== current.revision) throw revisionConflict();
     const updated = productionSchema.parse({ ...parsedInput, createdAt: current.createdAt, updatedAt: new Date().toISOString(), revision: current.revision + 1 });
-    memoryStore.set(keyOf(id), updated);
+    memoryStore.set(id, updated);
     return updated;
   }
 
-  if (id === 'default') await kvClient().set(keyOf(id), productionSchema.parse(defaultProduction), { nx: true });
+  if (id === 'default') {
+    const seeded = productionSchema.parse(defaultProduction);
+    const { error } = await db.from('productions').insert(rowOf(seeded));
+    if (error && error.code !== '23505') throw storageError(error);
+  }
   const current = await get(id);
   if (!current) return null;
+  if (parsedInput.revision !== current.revision) throw revisionConflict();
   const updated = productionSchema.parse({ ...parsedInput, createdAt: current.createdAt, updatedAt: new Date().toISOString(), revision: current.revision + 1 });
-  const result = await kvClient().eval(
-    'local current = redis.call("GET", KEYS[1]); if not current then return -1 end; local document = cjson.decode(current); if tonumber(document.revision) ~= tonumber(ARGV[1]) then return 0 end; redis.call("SET", KEYS[1], ARGV[2]); return 1',
-    [keyOf(id)],
-    [String(parsedInput.revision), JSON.stringify(updated)],
-  );
-  if (Number(result) === -1) return null;
-  if (Number(result) !== 1) throw revisionConflict();
-  return updated;
+  const { data, error } = await db.from('productions').update(rowOf(updated)).eq('id', id).eq('revision', current.revision).select('document').maybeSingle();
+  if (error) throw storageError(error);
+  if (!data) throw revisionConflict();
+  return productionSchema.parse(data.document);
+}
+
+async function remove(id) {
+  if (!/^[A-Za-z0-9_-]+$/.test(id) || id === 'default') return false;
+  const db = database();
+  if (!db) return memoryStore.delete(id);
+  const { data, error } = await db.from('productions').delete().eq('id', id).select('id').maybeSingle();
+  if (error) throw storageError(error);
+  return Boolean(data);
 }
 
 function revisionConflict() {
@@ -118,4 +148,4 @@ function revisionConflict() {
   return error;
 }
 
-module.exports = { create, get, list, save };
+module.exports = { create, get, list, remove, save };

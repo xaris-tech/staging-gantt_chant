@@ -17,26 +17,25 @@ test('adds an Activity immediately on an empty Production by creating starter pl
   await expect(addActivity).toBeEnabled();
   await addActivity.click();
   await page.getByLabel('Activity name').fill('Opening Cue');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
   await expect(page.getByRole('button', { name: /Opening Cue, General, Show/ })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: /Opening Cue, General, Show/ })).toBeVisible();
 });
 
 async function addSegment(page) {
-  await page.getByRole('button', { name: 'Add segment' }).click();
-  await page.getByText('Optional timing').click();
+  await page.getByRole('button', { name: 'Add segment', exact: true }).click();
   await page.getByLabel('Segment name').fill('Choir Production');
   await page.getByLabel('Segment start').fill('09:00');
   await page.getByLabel('Duration in minutes').fill('60');
-  await page.getByRole('button', { name: 'Save segment' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add segment', exact: true }).click();
 }
 
 async function addLane(page) {
   await page.getByRole('button', { name: 'Add lane' }).click();
   await page.getByLabel('Lane name').fill('Performers');
   await page.getByLabel('Lane group').fill('Program');
-  await page.getByRole('button', { name: 'Save lane' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add lane', exact: true }).click();
 }
 
 test('adds a Lane and timed Activity, edits it in the Inspector, and reloads it', async ({ page, request }) => {
@@ -45,16 +44,17 @@ test('adds a Lane and timed Activity, edits it in the Inspector, and reloads it'
   await addSegment(page);
   await addLane(page);
 
-  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByText('Optional timing').click();
   await page.getByLabel('Activity name').fill('Choir Entrance');
   await page.getByLabel('Activity start').fill('09:05');
   await page.getByLabel('Duration in minutes').fill('5');
   await page.getByLabel('Activity type').selectOption('entrance');
   await page.getByLabel('Activity status').selectOption('confirmed');
+  await page.getByText('More options').click();
   await page.getByLabel('Owner').fill('Stage Manager');
   await page.getByLabel('Activity notes').fill('Enter from stage left');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
 
   const block = page.getByRole('button', { name: /Choir Entrance, Performers, Choir Production, confirmed/ });
   await expect(block).toBeVisible();
@@ -83,7 +83,7 @@ test('adds an Activity from a hovered board cell with its Lane and Segment prese
   await expect(page.getByLabel('Segment').locator('option:checked')).toHaveText('Choir Production');
   await expect(page.getByLabel('Lane').locator('option:checked')).toHaveText('Performers');
   await page.getByLabel('Activity name').fill('Cell Cue');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
   await expect(page.getByRole('button', { name: /Cell Cue, Performers, Choir Production/ })).toBeVisible();
 });
 
@@ -101,7 +101,7 @@ test('adds a new Lane row directly below the hovered Lane', async ({ page, reque
   await addRow.click();
   await page.getByLabel('Lane name').fill('Technical');
   await page.getByLabel('Lane group').fill('Crew');
-  await page.getByRole('button', { name: 'Save lane' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add lane', exact: true }).click();
   const performersY = (await page.getByText('Performers', { exact: true }).boundingBox()).y;
   const technicalY = (await page.getByText('Technical', { exact: true }).boundingBox()).y;
   expect(technicalY).toBeGreaterThan(performersY);
@@ -116,12 +116,12 @@ test('allows an Activity to cross its starting Segment boundary', async ({ page,
   await page.goto(`/app/?production=${production.id}`);
   await addSegment(page);
   await addLane(page);
-  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByText('Optional timing').click();
   await page.getByLabel('Activity name').fill('Overlong Performance');
   await page.getByLabel('Activity start').fill('09:50');
   await page.getByLabel('Duration in minutes').fill('20');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
   await expect(page.getByRole('button', { name: /Overlong Performance, Performers, Choir Production/ })).toBeVisible();
 });
 
@@ -130,21 +130,20 @@ test('deletes an Activity and confirms Lane deletion impact', async ({ page, req
   await page.goto(`/app/?production=${production.id}`);
   await addSegment(page);
   await addLane(page);
-  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByText('Optional timing').click();
   await page.getByLabel('Activity name').fill('Temporary Cue');
   await page.getByLabel('Activity start').fill('09:10');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByRole('button', { name: /Temporary Cue,/ }).click();
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete activity' }).click();
+  await page.getByRole('dialog', { name: 'Delete Temporary Cue?' }).getByRole('button', { name: 'Delete activity', exact: true }).click();
   await expect(page.getByRole('button', { name: /Temporary Cue,/ })).toHaveCount(0);
 
-  page.once('dialog', async (dialog) => {
-    expect(dialog.message()).toContain('0 assigned Activities');
-    await dialog.accept();
-  });
   await page.getByRole('button', { name: 'Delete lane Performers' }).click();
+  const deletePerformers = page.getByRole('dialog', { name: 'Delete Performers?' });
+  await expect(deletePerformers).toContainText('0 assigned activities');
+  await deletePerformers.getByRole('button', { name: 'Delete lane', exact: true }).click();
   await expect(page.getByText('Performers', { exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByText('Performers', { exact: true })).toHaveCount(0);
@@ -165,11 +164,11 @@ test('keeps the Activity inspector open and explains a failed deletion', async (
   await page.goto(`/app/?production=${production.id}`);
   await addSegment(page);
   await addLane(page);
-  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByText('Optional timing').click();
   await page.getByLabel('Activity name').fill('Choir Entrance');
   await page.getByLabel('Activity start').fill('09:00');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByRole('button', { name: /Choir Entrance,/ }).click();
   await page.route(`/api/productions/${production.id}`, async (route) => {
     if (route.request().method() === 'PUT') {
@@ -178,8 +177,8 @@ test('keeps the Activity inspector open and explains a failed deletion', async (
       await route.continue();
     }
   });
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete activity' }).click();
+  await page.getByRole('dialog', { name: 'Delete Choir Entrance?' }).getByRole('button', { name: 'Delete activity', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Activity inspector' })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveText('A newer Production revision exists. Reload before deleting.');
 });
@@ -196,8 +195,8 @@ test('keeps a Lane visible and explains a failed deletion', async ({ page, reque
       await route.continue();
     }
   });
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete lane Performers' }).click();
+  await page.getByRole('dialog', { name: 'Delete Performers?' }).getByRole('button', { name: 'Delete lane', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Delete lane Performers' })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveText('A newer Production revision exists. Reload before deleting.');
 });
