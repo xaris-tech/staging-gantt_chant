@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const activityTypes = ['setup', 'entrance', 'performance', 'transition', 'exit', 'teardown', 'hold', 'custom'] as const;
+export const activityTypes = ['setup', 'entrance', 'performance', 'transition', 'exit', 'custom'] as const;
 export const activityStatuses = ['planned', 'confirmed', 'at-risk', 'cancelled', 'completed'] as const;
 
 function isTimezone(value: string) {
@@ -35,7 +35,7 @@ export const activitySchema = z.object({
   segmentId: z.string().min(1),
   laneId: z.string().min(1),
   label: z.string().min(1),
-  type: z.enum(activityTypes),
+  type: z.string().trim().min(1).max(80),
   start: z.string().datetime({ offset: true }),
   durationMinutes: z.number().int().positive(),
   owner: z.string(),
@@ -153,6 +153,9 @@ export const productionRepository = {
       method: 'PUT',
       body: JSON.stringify(production),
     });
+  },
+  delete(id: string) {
+    return requestJson(`/api/productions/${encodeURIComponent(id)}`, z.object({ deleted: z.literal(true) }), { method: 'DELETE' });
   },
 };
 

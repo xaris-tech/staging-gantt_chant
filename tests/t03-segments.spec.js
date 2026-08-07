@@ -16,13 +16,12 @@ async function createProduction(request) {
 }
 
 async function addSegment(page, { name, start, duration, color }) {
-  await page.getByRole('button', { name: 'Add segment' }).click();
-  await page.getByText('Optional timing').click();
+  await page.getByRole('button', { name: 'Add segment', exact: true }).click();
   await page.getByLabel('Segment name').fill(name);
   await page.getByLabel('Segment start').fill(start);
   await page.getByLabel('Duration in minutes').fill(String(duration));
-  await page.getByLabel('Segment color').fill(color);
-  await page.getByRole('button', { name: 'Save segment' }).click();
+  await page.getByRole('button', { name: `Segment color: ${color}` }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add segment', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
@@ -53,8 +52,8 @@ test('creates colorful draggable Segments, edits, reorders, collapses, and reloa
   const segmentNames = await page.locator('[data-testid="segment-header"] button[data-segment-name]').allTextContents();
   expect(segmentNames).toEqual(['Welcome Opening', 'Worship']);
 
-  await page.getByRole('button', { name: 'Collapse Worship' }).click();
-  await expect(page.getByRole('button', { name: 'Expand Worship' })).toBeVisible();
+  await page.getByRole('button', { name: 'Hide Worship' }).click();
+  await expect(page.getByRole('button', { name: 'Show Worship' })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Welcome Opening', exact: true })).toBeVisible();
@@ -86,10 +85,10 @@ test('offers hover plus controls on the board for adding Lanes and Segment colum
   await expect(boardButtons).toHaveCSS('opacity', '0');
   await boardHeader.hover();
   await expect(boardButtons).toHaveCSS('opacity', '1');
-  await addLane.click(); await expect(page.getByRole('heading', { name: 'Add lane' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close panel' }).click();
+  await addLane.click(); await expect(page.getByRole('heading', { name: 'Quick add' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close lane form' }).click();
   await boardHeader.hover(); await addSegment.click();
-  await expect(page.getByRole('heading', { name: 'Add segment' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Quick add segment' })).toBeVisible();
 });
 
 test('adds a Segment column directly after the hovered Segment', async ({ page, request }) => {
@@ -104,7 +103,7 @@ test('adds a Segment column directly after the hovered Segment', async ({ page, 
   expect(addBox.x + addBox.width / 2).toBeGreaterThan(headerBox.x + headerBox.width - 4);
   await addColumn.click();
   await page.getByLabel('Segment name').fill('Message');
-  await page.getByRole('button', { name: 'Save segment' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add segment', exact: true }).click();
   const openingX = (await page.getByRole('button', { name: 'Opening', exact: true }).boundingBox()).x;
   const messageX = (await page.getByRole('button', { name: 'Message', exact: true }).boundingBox()).x;
   expect(messageX).toBeGreaterThan(openingX);
@@ -115,12 +114,11 @@ test('adds a Segment column directly after the hovered Segment', async ({ page, 
 test('rejects a Segment outside the Production planned run', async ({ page, request }) => {
   const production = await createProduction(request);
   await page.goto(`/app/?production=${production.id}`);
-  await page.getByRole('button', { name: 'Add segment' }).click();
-  await page.getByText('Optional timing').click();
+  await page.getByRole('button', { name: 'Add segment', exact: true }).click();
   await page.getByLabel('Segment name').fill('Too Late');
   await page.getByLabel('Segment start').fill('11:45');
   await page.getByLabel('Duration in minutes').fill('30');
-  await page.getByRole('button', { name: 'Save segment' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add segment', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('within the Production');
 });
 
@@ -128,12 +126,11 @@ test('allows optional Segment timing to overlap in the sequence-first board', as
   const production = await createProduction(request);
   await page.goto(`/app/?production=${production.id}`);
   await addSegment(page, { name: 'Opening', start: '08:00', duration: 60, color: '#6ee7b7' });
-  await page.getByRole('button', { name: 'Add segment' }).click();
-  await page.getByText('Optional timing').click();
+  await page.getByRole('button', { name: 'Add segment', exact: true }).click();
   await page.getByLabel('Segment name').fill('Overlap');
   await page.getByLabel('Segment start').fill('08:30');
   await page.getByLabel('Duration in minutes').fill('60');
-  await page.getByRole('button', { name: 'Save segment' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add segment', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Overlap', exact: true })).toBeVisible();
   await page.reload();
@@ -147,20 +144,19 @@ test('deletes a Segment with confirmation and removes its assigned Activities af
 
   await page.getByRole('button', { name: 'Add lane' }).click();
   await page.getByLabel('Lane name').fill('Stage Team');
-  await page.getByRole('button', { name: 'Save lane' }).click();
-  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add lane', exact: true }).click();
+  await page.getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByText('Optional timing').click();
   await page.getByLabel('Activity name').fill('House Open');
   await page.getByLabel('Activity start').fill('08:00');
   await page.getByLabel('Duration in minutes').fill('10');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
 
   await page.getByRole('button', { name: 'Opening', exact: true }).click();
-  page.once('dialog', async (dialog) => {
-    expect(dialog.message()).toBe('Delete Opening? This will also delete 1 assigned Activity.');
-    await dialog.accept();
-  });
   await page.getByRole('button', { name: 'Delete segment' }).click();
+  const deleteOpening = page.getByRole('dialog', { name: 'Delete Opening?' });
+  await expect(deleteOpening).toContainText('1 assigned activity');
+  await deleteOpening.getByRole('button', { name: 'Delete segment', exact: true }).click();
 
   await expect(page.getByRole('button', { name: 'Opening', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /House Open,/ })).toHaveCount(0);
@@ -179,14 +175,14 @@ test('reorders Segments without closing schedule gaps or retiming Activities', a
 
   await page.getByRole('button', { name: 'Add lane' }).click();
   await page.getByLabel('Lane name').fill('Speaker');
-  await page.getByRole('button', { name: 'Save lane' }).click();
-  await page.getByRole('button', { name: 'Add activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add lane', exact: true }).click();
+  await page.getByRole('button', { name: 'Add activity', exact: true }).click();
   await page.getByText('Optional timing').click();
   await page.getByLabel('Activity name').fill('Main Message');
   await page.getByLabel('Segment').selectOption({ label: 'Message' });
   await page.getByLabel('Activity start').fill('10:00');
   await page.getByLabel('Duration in minutes').fill('10');
-  await page.getByRole('button', { name: 'Save activity' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Add activity', exact: true }).click();
 
   await page.getByRole('button', { name: 'Move Message earlier' }).click();
   const saved = await (await request.get(`/api/productions/${production.id}`)).json();
@@ -207,8 +203,8 @@ test('keeps the Segment inspector open and explains a failed deletion', async ({
       await route.continue();
     }
   });
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete segment' }).click();
+  await page.getByRole('dialog', { name: 'Delete Opening?' }).getByRole('button', { name: 'Delete segment', exact: true }).click();
 
   await expect(page.getByRole('dialog', { name: 'Edit segment' })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveText('A newer Production revision exists. Reload before deleting.');

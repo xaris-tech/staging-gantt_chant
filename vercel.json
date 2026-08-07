@@ -6,6 +6,7 @@
   ],
   "rewrites": [
     { "source": "/app/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/app/sm-logo.png", "destination": "/sm-logo.png" },
     { "source": "/app", "destination": "/index.html" },
     { "source": "/app/(.*)", "destination": "/index.html" }
   ]
